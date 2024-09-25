@@ -1,28 +1,39 @@
-// const sequelize = require('../database/sequelize');
-// const {DataTypes} = require('sequelize');
+const mongoose = require('../database/mongoose');
+const {Schema} = mongoose;
+const bcrypt = require('bcrypt');
 
-// const Usuario = sequelize.define('Usuario', {
-//     // Model attributes are defined here
-//     nome: {
-//       type: DataTypes.STRING,
-//       allowNull: false
-//     },
-//     email: {
-//       type: DataTypes.STRING,
-//       primaryKey: true
-//     },
-//     nascimento:{
-//       type: DataTypes.DATE
-//     }
-//   }, {
-//     // Other model options go here
-//   });
-  
-//   async function sincronizar(){
-//     await Usuario.sync();
-//     console.log("Sincronizado");
-//   }
-  
-// sincronizar();
+const userSchema = new Schema({
+  codinome: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  afiliacao: {
+    type: String,
+    enum: ['Império', 'Cartel Hutt', 'Aurora Escarlate', 'Sindicato Pyke'], 
+    required: true,
+  },
+  senha: {
+    type: String,
+    required: true
+  }
+});
 
-// module.exports = Usuario;
+userSchema.pre('save', async function(next) {
+  try {
+    if (!this.isModified('senha')) return next();
+    const salt = await bcrypt.genSalt(10);
+    const hash = await bcrypt.hash(this.senha, salt);
+    this.senha = hash;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+userSchema.methods.comparePassword = async function(senha) {
+  return bcrypt.compare(senha, this.senha);
+};
+
+const User = mongoose.model('User', userSchema);
+module.exports = User;

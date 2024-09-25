@@ -1,26 +1,79 @@
 const client = require('../database/redis');
 const PontoDeInteresse = require('../model/PontoDeInteresse');
+const { v4: uuidv4, parse: uuidParse, stringify: uuidStringify } = require('uuid');
 
 const listarPontosDeInteresse = async (req, res) => {
-
-  const cache = await client.get('pontoDeInteresse');
+  const { query, lat, lng, maxDistance = 5000 } = req.query;
 
   try {
-    if(cache){
-      console.log('Informação recuperada de cache');
-      res.json(JSON.parse(cache));
-    }else{
-      console.log('Informação não encontrada em cache');
+    if (!query && !lat && !lng) {
+      const cache = await client.keys('pontosDeInteresse*');
+
+      if (cache.length > 0) {
+        const pontosEmCache = await Promise.all(
+          cache.map(async (key) => {
+            const cachedData = await client.get(key);
+            return JSON.parse(cachedData);
+          })
+        );
+
+        console.log('Informação recuperada de cache');
+        return res.json(pontosEmCache); 
+      }
+
+      console.log('Informação não encontrada em cache. Buscando todos os pontos no banco de dados');
       const pontosDeInteresse = await PontoDeInteresse.find();
-  
-      await client.set('pontosDeInteresse', JSON.stringify(pontosDeInteresse),{
-        EX: 3600
-      });
-  
-      res.json(pontosDeInteresse);
+
+      await Promise.all(
+        pontosDeInteresse.map(async (ponto) => {
+          await client.set(`pontosDeInteresse:${ponto._id}`, JSON.stringify(ponto), {
+            EX: 3600
+          });
+        })
+      );
+
+      return res.json(pontosDeInteresse);
     }
+    
+    const buscaCustomizadaQuery = {};
+
+    if (!lat || !lng || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) {
+      return res.status(400).json({ error: "Parâmetros de localização inválidos" });
+    }
+    
+    if (lat && lng) {
+      buscaCustomizadaQuery.pontoDeInteresse = {
+        $near: {
+          $geometry: {
+            type: "Point",
+            coordinates: [parseFloat(lng), parseFloat(lat)]
+          },
+          $maxDistance: parseInt(maxDistance)
+        }
+      };
+    }
+
+    let pontosDeInteresse = await PontoDeInteresse.find(buscaCustomizadaQuery);
+
+    if (query) {
+      pontosDeInteresse = pontosDeInteresse.filter(ponto => 
+        ponto.titulo.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+
+    await Promise.all(
+      pontosDeInteresse.map(async (ponto) => {
+        await client.set(`pontosDeInteresse:${ponto._id}`, JSON.stringify(ponto), {
+          EX: 3600
+        });
+      })
+    );
+
+    res.json(pontosDeInteresse);
+    
   } catch (error) {
-    res.status(400).send(error);
+    console.error('Erro ao listar pontos de interesse:', error);
+    res.status(400).json({ error: 'Erro na requisição', details: error.message });
   }
 };
 
@@ -30,7 +83,7 @@ const criarPontoDeInteresse = async (req, res) => {
 
     const novoPontoDeInteresse = await PontoDeInteresse.create(req.body);
     
-    await client.set(`pontoDeInteresse:${novoPontoDeInteresse._id}`, JSON.stringify(novoPontoDeInteresse), {
+    await client.set(`pontosDeInteresse:${novoPontoDeInteresse._id}`, JSON.stringify(novoPontoDeInteresse), {
       EX: 3600
     });
 
@@ -53,7 +106,7 @@ const atualizarPontoDeInteresse = async (req, res) => {
       return res.status(404).send('Ponto de interesse não encontrado');
     }
     
-    await client.set(`pontoDeInteresse:${pontoDeInteresse._id}`, JSON.stringify(pontoDeInteresse), {
+    await client.set(`pontosDeInteresse:${pontoDeInteresse._id}`, JSON.stringify(pontoDeInteresse), {
       EX: 3600
     });
 
@@ -76,13 +129,12 @@ const deletarPontoDeInteresse = async (req, res) => {
     }
 
     const pontosDeInteresse = await PontoDeInteresse.find();
-    await client.del(`pontoDeInteresse:${pontoDeInteresse._id}`);
+    await client.del(`pontosDeInteresse:${pontoDeInteresse._id}`);
 
     res.status(204).send();
   } catch (error) {
     res.status(400).send(error);
   }
 };
-
 
 module.exports = { listarPontosDeInteresse, criarPontoDeInteresse, atualizarPontoDeInteresse, deletarPontoDeInteresse};

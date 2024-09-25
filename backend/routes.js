@@ -13,9 +13,7 @@ pool.query('SELECT NOW()', (err, res) => {
 
 router.get('/pontos', async (req, res) => {
   try {
-    console.log('Iniciando consulta ao banco de dados');
     const result = await pool.query('SELECT id, descricao, ST_AsGeoJSON(geometria) as geometria FROM ponto_de_interesse');
-    console.log('Consulta ao banco de dados concluída');
     res.json(result.rows);
   } catch (err) {
     console.error('Erro ao buscar pontos de interesse:', err.message);

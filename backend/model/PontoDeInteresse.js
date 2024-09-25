@@ -2,7 +2,7 @@ const mongoose = require('../database/mongoose');
 const {Schema} = mongoose;
 const { randomUUID } = require('crypto');
 
-const pontoDeInteresseSchema = new Schema({
+const pontosDeInteresseSchema = new Schema({
   _id: {
     type: 'UUID',
     default: () => randomUUID()
@@ -32,11 +32,15 @@ const pontoDeInteresseSchema = new Schema({
   }
 });
 
-pontoDeInteresseSchema.index(
+pontosDeInteresseSchema.index(
   {titulo: 'text', descricao:'text'},
   {default_language: 'pt', weights:{titulo:2, descricao:1}}
+
 );
 
-const PontoDeInteresse = mongoose.model('pontosDeInteresse', pontoDeInteresseSchema);
+pontosDeInteresseSchema.index({ pontoDeInteresse: '2dsphere' });
+
+
+const PontoDeInteresse = mongoose.model('pontosDeInteresse', pontosDeInteresseSchema);
 
 module.exports = PontoDeInteresse;
